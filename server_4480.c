@@ -74,13 +74,31 @@ int main()
     printf("==============================\n");
     printf("Waiting for clients...\n");
 
-    /* Keep server running for now */
     while (1)
+{
+    int client_socket;
+    struct sockaddr_in client_addr;
+    socklen_t client_len = sizeof(client_addr);
+
+    printf("Waiting for a client connection...\n");
+
+    client_socket = accept(server_socket,
+                           (struct sockaddr *)&client_addr,
+                           &client_len);
+
+    if (client_socket < 0)
     {
-        sleep(1);
+        perror("accept");
+        continue;
     }
 
-    close(server_socket);
+    printf("Client connected successfully. Socket FD = %d\n",
+           client_socket);
+
+    close(client_socket);
+
+    printf("Client connection closed.\n");
+}
 
     return 0;
 }
