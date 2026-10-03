@@ -1,0 +1,31 @@
+[2026-10-03 23:33:08] SERVER_START port=10480 NID=6344
+[2026-10-03 23:33:21] CONNECT socket=4
+[2026-10-03 23:33:25] REGISTER username=ayesh socket=4
+[2026-10-03 23:33:32] CONNECT socket=5
+[2026-10-03 23:33:36] REGISTER username=nimal socket=5
+[2026-10-03 23:40:19] BCAST sender=ayesh message=Logging test
+[2026-10-03 23:40:34] PMSG sender=ayesh target=nimal message=Private log test
+[2026-10-03 23:41:11] JOIN username=ayesh room=network
+[2026-10-03 23:41:14] RMSG sender=ayesh room=network message=Room log test
+[2026-10-03 23:41:28] FILE sender=ayesh target=nimal filename=test.txt size=32 stored=storage/IT23634480/ayesh/test.txt
+[2026-10-03 23:41:34] QUIT username=ayesh
+[2026-10-03 23:41:58] QUIT username=nimal
+[2026-10-03 23:54:55] CONNECT socket=6
+[2026-10-03 23:54:56] REGISTER username=ayesh socket=6
+[2026-10-03 23:55:00] CONNECT socket=4
+[2026-10-03 23:55:01] REGISTER username=nimal socket=4
+[2026-10-03 23:55:21] DISCONNECT username=nimal
+[2026-10-04 00:03:15] INVALID_COMMAND username=ayesh command=HELLO TEST
+
+[2026-10-04 00:03:30] INVALID_COMMAND username=ayesh command=PMSG
+
+[2026-10-04 00:03:44] INVALID_COMMAND username=ayesh command=BCAST
+
+[2026-10-04 00:06:08] CONNECT socket=5
+[2026-10-04 00:06:12] REGISTER username=kamal socket=5
+[2026-10-04 00:06:25] CONNECT socket=4
+[2026-10-04 00:06:30] REGISTER username=sunil socket=4
+[2026-10-04 00:06:38] CONNECT socket=7
+[2026-10-04 00:06:41] REGISTER username=amal socket=7
+[2026-10-04 00:10:19] CONNECT socket=8
+[2026-10-04 00:10:22] REGISTER username=nimal socket=8
