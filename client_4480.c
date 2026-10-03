@@ -53,7 +53,45 @@ int main()
 
     printf("Connected to NetMessenger server successfully.\n");
 
-    close(client_socket);
+char username[50];
+char message[100];
+char response[200];
 
-    return 0;
+/* Ask user for a username */
+printf("Enter username: ");
+scanf("%49s", username);
+
+/* Build REGISTER command */
+snprintf(message,
+         sizeof(message),
+         "REGISTER %s\n",
+         username);
+
+/* Send REGISTER command to server */
+send(client_socket,
+     message,
+     strlen(message),
+     0);
+
+/* Receive server response */
+memset(response, 0, sizeof(response));
+
+int bytes_received = recv(client_socket,
+                          response,
+                          sizeof(response) - 1,
+                          0);
+
+if (bytes_received > 0)
+{
+    response[bytes_received] = '\0';
+    printf("Server response: %s", response);
+}
+else
+{
+    printf("No response from server.\n");
+}
+
+close(client_socket);
+
+return 0;
 }

@@ -80,6 +80,9 @@ int main()
     struct sockaddr_in client_addr;
     socklen_t client_len = sizeof(client_addr);
 
+    char buffer[1024];
+    char username[50];
+
     printf("Waiting for a client connection...\n");
 
     client_socket = accept(server_socket,
@@ -95,10 +98,54 @@ int main()
     printf("Client connected successfully. Socket FD = %d\n",
            client_socket);
 
+    memset(buffer, 0, sizeof(buffer));
+
+    int bytes_received = recv(client_socket,
+                              buffer,
+                              sizeof(buffer) - 1,
+                              0);
+
+    if (bytes_received <= 0)
+    {
+        printf("Client disconnected before registration.\n");
+        close(client_socket);
+        continue;
+    }
+
+    buffer[bytes_received] = '\0';
+
+    printf("Received: %s", buffer);
+
+    if (sscanf(buffer, "REGISTER %49s", username) == 1)
+    {
+        char response[200];
+
+        snprintf(response,
+                 sizeof(response),
+                 "OK REGISTERED %s NID:6344\n",
+                 username);
+
+        send(client_socket,
+             response,
+             strlen(response),
+             0);
+
+        printf("User registered: %s\n", username);
+    }
+    else
+    {
+        char *error =
+            "ERR 005 INVALID_COMMAND NID:6344\n";
+
+        send(client_socket,
+             error,
+             strlen(error),
+             0);
+    }
+
     close(client_socket);
 
     printf("Client connection closed.\n");
 }
-
     return 0;
 }
