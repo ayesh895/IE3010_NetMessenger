@@ -276,11 +276,15 @@ int main()
 
 
     printf("\nConnection active.\n");
-    printf("Available commands:\n");
-    printf("  LIST\n");
-    printf("  BCAST <message>\n");
-    printf("Type QUITLOCAL to disconnect.\n");
-
+printf("Available commands:\n");
+printf("  LIST\n");
+printf("  BCAST <message>\n");
+printf("  PMSG <username> <message>\n");
+printf("  JOIN <room>\n");
+printf("  LEAVE <room>\n");
+printf("  ROOMS\n");
+printf("  RMSG <room> <message>\n");
+printf("Type QUITLOCAL to disconnect.\n");
 
     /*
      * Main thread reads keyboard input
