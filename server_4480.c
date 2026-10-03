@@ -85,7 +85,39 @@ void remove_client(int socket)
     pthread_mutex_unlock(&clients_mutex);
 }
 
+void handle_list(int client_socket)
+{
+    char response[1024];
 
+    strcpy(response, "OK USERS ");
+
+    pthread_mutex_lock(&clients_mutex);
+
+    int first = 1;
+
+    for (int i = 0; i < MAX_CLIENTS; i++)
+    {
+        if (clients[i].active)
+        {
+            if (!first)
+            {
+                strcat(response, ",");
+            }
+
+            strcat(response, clients[i].username);
+            first = 0;
+        }
+    }
+
+    pthread_mutex_unlock(&clients_mutex);
+
+    strcat(response, " NID:6344\n");
+
+    send(client_socket,
+         response,
+         strlen(response),
+         0);
+}
 /* Handles one connected client */
 void *client_handler(void *arg)
 {
@@ -255,9 +287,24 @@ void *client_handler(void *arg)
 
         buffer[bytes_received] = '\0';
 
-        printf("Message from %s: %s",
-               username,
-               buffer);
+        printf("Command from %s: %s",
+       username,
+       buffer);
+
+if (strcmp(buffer, "LIST\n") == 0)
+{
+    handle_list(client_socket);
+}
+else
+{
+    char *error =
+        "ERR 005 INVALID_COMMAND NID:6344\n";
+
+    send(client_socket,
+         error,
+         strlen(error),
+         0);
+}
     }
 
 

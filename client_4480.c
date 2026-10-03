@@ -171,27 +171,63 @@ int main()
      * multiple clients can stay connected
      * at the same time.
      */
-    printf("\nConnection active.\n");
-    printf("Press ENTER to disconnect...\n");
+    char command[1024];
 
+/* Remove newline left by scanf() */
+getchar();
 
-    /*
-     * The previous scanf() leaves the newline
-     * character in stdin.
-     *
-     * First getchar() removes that newline.
-     * Second getchar() waits for the user.
-     */
-    getchar();
-    getchar();
+printf("\nConnection active.\n");
+printf("Available test command: LIST\n");
+printf("Type QUITLOCAL to disconnect.\n");
 
+while (1)
+{
+    printf("> ");
 
-    /*
-     * Close connection
-     */
-    close(client_socket);
+    if (fgets(command,
+              sizeof(command),
+              stdin) == NULL)
+    {
+        break;
+    }
 
-    printf("Disconnected from server.\n");
+    if (strcmp(command, "QUITLOCAL\n") == 0)
+    {
+        break;
+    }
 
-    return 0;
+    if (send(client_socket,
+             command,
+             strlen(command),
+             0) < 0)
+    {
+        perror("send");
+        break;
+    }
+
+    memset(response, 0, sizeof(response));
+
+    bytes_received =
+        recv(client_socket,
+             response,
+             sizeof(response) - 1,
+             0);
+
+    if (bytes_received <= 0)
+    {
+        printf("Server disconnected.\n");
+        break;
+    }
+
+    response[bytes_received] = '\0';
+
+    printf("Server response: %s",
+           response);
+}
+
+close(client_socket);
+
+printf("Disconnected from server.\n");
+
+return 0;
 }
