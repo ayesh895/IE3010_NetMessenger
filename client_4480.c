@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <pthread.h>
 #include <arpa/inet.h>
 
 #include <sys/types.h>
@@ -11,45 +12,115 @@
 #define PORT 10480
 #define SERVER_IP "127.0.0.1"
 
+
+/*
+ * Receiver thread.
+ *
+ * This thread continuously waits for
+ * responses and incoming messages
+ * from the server.
+ */
+void *receiver_thread(void *arg)
+{
+    int client_socket =
+        *(int *)arg;
+
+    char buffer[1200];
+
+
+    while (1)
+    {
+        memset(buffer,
+               0,
+               sizeof(buffer));
+
+
+        int bytes_received =
+            recv(client_socket,
+                 buffer,
+                 sizeof(buffer) - 1,
+                 0);
+
+
+        if (bytes_received <= 0)
+        {
+            printf("\nDisconnected from server.\n");
+
+            break;
+        }
+
+
+        buffer[bytes_received] =
+            '\0';
+
+
+        /*
+         * Display server response or
+         * incoming message.
+         */
+        printf("\n%s",
+               buffer);
+
+        printf("> ");
+
+        fflush(stdout);
+    }
+
+
+    return NULL;
+}
+
+
 int main()
 {
     int client_socket;
+
     struct sockaddr_in server_addr;
 
     char username[50];
+
     char message[100];
+
     char response[200];
 
+
     /*
-     * Create IPv4 TCP socket
+     * Create IPv4 TCP socket.
      */
-    client_socket = socket(AF_INET,
-                           SOCK_STREAM,
-                           0);
+    client_socket =
+        socket(AF_INET,
+               SOCK_STREAM,
+               0);
+
 
     if (client_socket < 0)
     {
         perror("socket");
+
         return 1;
     }
+
 
     printf("Client socket created successfully.\n");
 
 
     /*
-     * Configure server address
+     * Configure server address.
      */
     memset(&server_addr,
            0,
            sizeof(server_addr));
 
-    server_addr.sin_family = AF_INET;
 
-    server_addr.sin_port = htons(PORT);
+    server_addr.sin_family =
+        AF_INET;
+
+    server_addr.sin_port =
+        htons(PORT);
 
 
     /*
-     * Convert 127.0.0.1 into binary IP format
+     * Convert server IP address.
      */
     if (inet_pton(AF_INET,
                   SERVER_IP,
@@ -64,11 +135,12 @@ int main()
 
 
     /*
-     * Connect to NetMessenger server
+     * Connect to server.
      */
     printf("Connecting to %s:%d...\n",
            SERVER_IP,
            PORT);
+
 
     if (connect(client_socket,
                 (struct sockaddr *)&server_addr,
@@ -81,19 +153,21 @@ int main()
         return 1;
     }
 
+
     printf("Connected to NetMessenger server successfully.\n");
 
 
     /*
-     * Ask user for username
+     * Ask for username.
      */
     printf("Enter username: ");
 
-    scanf("%49s", username);
+    scanf("%49s",
+          username);
 
 
     /*
-     * Build REGISTER command
+     * Build REGISTER command.
      */
     snprintf(message,
              sizeof(message),
@@ -102,7 +176,7 @@ int main()
 
 
     /*
-     * Send REGISTER command
+     * Send REGISTER command.
      */
     if (send(client_socket,
              message,
@@ -118,11 +192,15 @@ int main()
 
 
     /*
-     * Receive server registration response
+     * Receive registration response.
+     *
+     * Receiver thread has NOT started yet,
+     * so main() handles registration first.
      */
     memset(response,
            0,
            sizeof(response));
+
 
     int bytes_received =
         recv(client_socket,
@@ -133,15 +211,16 @@ int main()
 
     if (bytes_received > 0)
     {
-        response[bytes_received] = '\0';
+        response[bytes_received] =
+            '\0';
+
 
         printf("Server response: %s",
                response);
 
 
         /*
-         * If server returns ERR,
-         * registration has failed.
+         * Registration failed.
          */
         if (strncmp(response,
                     "ERR",
@@ -165,69 +244,100 @@ int main()
 
 
     /*
-     * Registration successful.
-     *
-     * Keep the connection open so that
-     * multiple clients can stay connected
-     * at the same time.
+     * Start receiver thread only after
+     * successful registration.
      */
+    pthread_t recv_thread;
+
+
+    if (pthread_create(&recv_thread,
+                       NULL,
+                       receiver_thread,
+                       &client_socket) != 0)
+    {
+        perror("pthread_create");
+
+        close(client_socket);
+
+        return 1;
+    }
+
+
+    pthread_detach(recv_thread);
+
+
+    /*
+     * Remove newline left by scanf().
+     */
+    getchar();
+
+
     char command[1024];
 
-/* Remove newline left by scanf() */
-getchar();
 
-printf("\nConnection active.\n");
-printf("Available test command: LIST\n");
-printf("Type QUITLOCAL to disconnect.\n");
+    printf("\nConnection active.\n");
+    printf("Available commands:\n");
+    printf("  LIST\n");
+    printf("  BCAST <message>\n");
+    printf("Type QUITLOCAL to disconnect.\n");
 
-while (1)
-{
-    printf("> ");
 
-    if (fgets(command,
-              sizeof(command),
-              stdin) == NULL)
+    /*
+     * Main thread reads keyboard input
+     * and sends commands.
+     *
+     * receiver_thread receives all
+     * incoming network messages.
+     */
+    while (1)
     {
-        break;
+        printf("> ");
+
+        fflush(stdout);
+
+
+        if (fgets(command,
+                  sizeof(command),
+                  stdin) == NULL)
+        {
+            break;
+        }
+
+
+        /*
+         * Local test command.
+         * This is not sent to the server.
+         */
+        if (strcmp(command,
+                   "QUITLOCAL\n") == 0)
+        {
+            break;
+        }
+
+
+        /*
+         * Send command to server.
+         */
+        if (send(client_socket,
+                 command,
+                 strlen(command),
+                 0) < 0)
+        {
+            perror("send");
+
+            break;
+        }
     }
 
-    if (strcmp(command, "QUITLOCAL\n") == 0)
-    {
-        break;
-    }
 
-    if (send(client_socket,
-             command,
-             strlen(command),
-             0) < 0)
-    {
-        perror("send");
-        break;
-    }
+    /*
+     * Close TCP connection.
+     */
+    close(client_socket);
 
-    memset(response, 0, sizeof(response));
 
-    bytes_received =
-        recv(client_socket,
-             response,
-             sizeof(response) - 1,
-             0);
+    printf("Disconnected from server.\n");
 
-    if (bytes_received <= 0)
-    {
-        printf("Server disconnected.\n");
-        break;
-    }
 
-    response[bytes_received] = '\0';
-
-    printf("Server response: %s",
-           response);
-}
-
-close(client_socket);
-
-printf("Disconnected from server.\n");
-
-return 0;
+    return 0;
 }
