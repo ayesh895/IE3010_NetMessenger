@@ -24,7 +24,7 @@ Client clients[MAX_CLIENTS];
 pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 
-/* Find a free slot in clients array */
+/* Find a free client slot */
 int find_free_client_slot()
 {
     for (int i = 0; i < MAX_CLIENTS; i++)
@@ -39,7 +39,7 @@ int find_free_client_slot()
 }
 
 
-/* Check whether username is already connected */
+/* Check whether a username already exists */
 int username_exists(const char *username)
 {
     for (int i = 0; i < MAX_CLIENTS; i++)
@@ -126,9 +126,6 @@ void handle_bcast(int sender_socket,
 {
     char outgoing[1200];
 
-    /*
-     * MSG lines do NOT include NID tag.
-     */
     snprintf(outgoing,
              sizeof(outgoing),
              "MSG BCAST %s %s\n",
@@ -139,10 +136,6 @@ void handle_bcast(int sender_socket,
 
     for (int i = 0; i < MAX_CLIENTS; i++)
     {
-        /*
-         * Send to all connected clients
-         * except the sender.
-         */
         if (clients[i].active &&
             clients[i].socket != sender_socket)
         {
@@ -155,10 +148,78 @@ void handle_bcast(int sender_socket,
 
     pthread_mutex_unlock(&clients_mutex);
 
+    char *response =
+        "OK SENT NID:6344\n";
+
+    send(sender_socket,
+         response,
+         strlen(response),
+         0);
+}
+
+
+/* Handle PMSG command */
+void handle_pmsg(int sender_socket,
+                 const char *sender_username,
+                 const char *target_username,
+                 const char *message)
+{
+    int target_socket = -1;
+
+    pthread_mutex_lock(&clients_mutex);
+
+    for (int i = 0; i < MAX_CLIENTS; i++)
+    {
+        if (clients[i].active &&
+            strcmp(clients[i].username,
+                   target_username) == 0)
+        {
+            target_socket = clients[i].socket;
+            break;
+        }
+    }
+
+    pthread_mutex_unlock(&clients_mutex);
+
 
     /*
-     * Sender receives OK response.
-     * All OK and ERR responses require NID.
+     * Target user does not exist.
+     */
+    if (target_socket == -1)
+    {
+        char *error =
+            "ERR 002 USER_NOT_FOUND NID:6344\n";
+
+        send(sender_socket,
+             error,
+             strlen(error),
+             0);
+
+        return;
+    }
+
+
+    /*
+     * Send private message to target.
+     *
+     * MSG lines do NOT contain NID.
+     */
+    char outgoing[1200];
+
+    snprintf(outgoing,
+             sizeof(outgoing),
+             "MSG PRIV %s %s\n",
+             sender_username,
+             message);
+
+    send(target_socket,
+         outgoing,
+         strlen(outgoing),
+         0);
+
+
+    /*
+     * Confirm success to sender.
      */
     char *response =
         "OK SENT NID:6344\n";
@@ -170,7 +231,7 @@ void handle_bcast(int sender_socket,
 }
 
 
-/* Thread handler for one connected client */
+/* Handle one connected client */
 void *client_handler(void *arg)
 {
     int client_socket =
@@ -191,14 +252,14 @@ void *client_handler(void *arg)
 
 
     /*
-     * First command must be:
-     * REGISTER <username>
+     * First command must be REGISTER.
      */
     int bytes_received =
         recv(client_socket,
              buffer,
              sizeof(buffer) - 1,
              0);
+
 
     if (bytes_received <= 0)
     {
@@ -209,7 +270,10 @@ void *client_handler(void *arg)
         return NULL;
     }
 
-    buffer[bytes_received] = '\0';
+
+    buffer[bytes_received] =
+        '\0';
+
 
     printf("Received: %s",
            buffer);
@@ -239,13 +303,13 @@ void *client_handler(void *arg)
 
 
     /*
-     * Protect shared user list.
+     * Lock shared client list.
      */
     pthread_mutex_lock(&clients_mutex);
 
 
     /*
-     * Duplicate username check.
+     * Check duplicate username.
      */
     if (username_exists(username))
     {
@@ -269,10 +333,11 @@ void *client_handler(void *arg)
 
 
     /*
-     * Find free client slot.
+     * Find free slot.
      */
     int slot =
         find_free_client_slot();
+
 
     if (slot == -1)
     {
@@ -295,7 +360,7 @@ void *client_handler(void *arg)
 
 
     /*
-     * Store connected client.
+     * Store client information.
      */
     clients[slot].socket =
         client_socket;
@@ -310,11 +375,12 @@ void *client_handler(void *arg)
     clients[slot].active =
         1;
 
+
     pthread_mutex_unlock(&clients_mutex);
 
 
     /*
-     * Successful registration.
+     * Registration successful.
      */
     char response[200];
 
@@ -328,6 +394,7 @@ void *client_handler(void *arg)
          strlen(response),
          0);
 
+
     printf("User registered: %s\n",
            username);
 
@@ -336,13 +403,14 @@ void *client_handler(void *arg)
 
 
     /*
-     * Command processing loop
+     * Main command loop.
      */
     while (1)
     {
         memset(buffer,
                0,
                sizeof(buffer));
+
 
         bytes_received =
             recv(client_socket,
@@ -351,6 +419,9 @@ void *client_handler(void *arg)
                  0);
 
 
+        /*
+         * Client closed connection.
+         */
         if (bytes_received == 0)
         {
             printf("Client %s disconnected.\n",
@@ -360,6 +431,9 @@ void *client_handler(void *arg)
         }
 
 
+        /*
+         * recv() error.
+         */
         if (bytes_received < 0)
         {
             perror("recv");
@@ -378,7 +452,7 @@ void *client_handler(void *arg)
 
 
         /*
-         * LIST command
+         * LIST
          */
         if (strcmp(buffer,
                    "LIST\n") == 0)
@@ -400,7 +474,7 @@ void *client_handler(void *arg)
                    buffer + 6);
 
             /*
-             * Remove trailing newline.
+             * Remove newline.
              */
             message[strcspn(message, "\n")] =
                 '\0';
@@ -426,7 +500,49 @@ void *client_handler(void *arg)
 
 
         /*
-         * Unknown command
+         * PMSG <username> <message>
+         */
+        else if (strncmp(buffer,
+                         "PMSG ",
+                         5) == 0)
+        {
+            char target[USERNAME_SIZE];
+            char message[900];
+
+            memset(target,
+                   0,
+                   sizeof(target));
+
+            memset(message,
+                   0,
+                   sizeof(message));
+
+
+            if (sscanf(buffer,
+                       "PMSG %49s %899[^\n]",
+                       target,
+                       message) == 2)
+            {
+                handle_pmsg(client_socket,
+                            username,
+                            target,
+                            message);
+            }
+            else
+            {
+                char *error =
+                    "ERR 007 INVALID_FORMAT NID:6344\n";
+
+                send(client_socket,
+                     error,
+                     strlen(error),
+                     0);
+            }
+        }
+
+
+        /*
+         * Unknown command.
          */
         else
         {
@@ -441,9 +557,14 @@ void *client_handler(void *arg)
     }
 
 
+    /*
+     * Remove client from user list.
+     */
     remove_client(client_socket);
 
+
     close(client_socket);
+
 
     return NULL;
 }
@@ -490,7 +611,7 @@ int main()
 
 
     /*
-     * Allow address reuse.
+     * Enable address reuse.
      */
     int opt = 1;
 
@@ -528,7 +649,7 @@ int main()
 
 
     /*
-     * Bind server socket.
+     * Bind server to port.
      */
     if (bind(server_socket,
              (struct sockaddr *)&server_addr,
@@ -547,7 +668,7 @@ int main()
 
 
     /*
-     * Listen for clients.
+     * Listen for incoming clients.
      */
     if (listen(server_socket,
                MAX_CLIENTS) < 0)
@@ -616,12 +737,12 @@ int main()
                *client_socket);
 
 
-        /*
-         * Create separate client thread.
-         */
         pthread_t thread_id;
 
 
+        /*
+         * Create one thread per client.
+         */
         if (pthread_create(&thread_id,
                            NULL,
                            client_handler,
