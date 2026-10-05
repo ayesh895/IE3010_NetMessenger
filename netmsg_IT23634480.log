@@ -29,3 +29,4 @@
 [2026-10-04 00:06:41] REGISTER username=amal socket=7
 [2026-10-04 00:10:19] CONNECT socket=8
 [2026-10-04 00:10:22] REGISTER username=nimal socket=8
+[2026-10-04 00:18:24] SERVER_START port=10480 NID=6344
