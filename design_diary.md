@@ -1,69 +1,25 @@
 # NetMessenger Design Diary
 
-## Student
-Registration Number: IT23634480
+Registration number: IT23634480
 
-## Initial Planning
-I reviewed the assignment specification and identified the required
-protocol commands and personalisation rules. From my registration
-number, I calculated the TCP port as 10480 and the Node ID as NID:6344.
+## Planning and architecture
 
-I selected a thread-per-client server architecture using POSIX pthreads.
-This approach allowed the server to continue accepting new connections
-while each connected client was handled independently.
+I identified the mandatory commands and calculated port 10480 and NID:6344 from my registration number. I selected a POSIX thread-per-client server so the accept loop could continue while workers processed clients. Shared user, room and log data require mutex protection. The client has a receiver thread so incoming messages can arrive while I enter commands.
 
-## Basic TCP Communication
-I first created a basic TCP server using socket(), bind(), listen() and
-accept(). Then I created the TCP client using socket() and connect().
-The connection was tested locally using 127.0.0.1 and port 10480.
+## Development sequence
 
-## Registration and Client Management
-I implemented REGISTER first and then added a shared connected-client
-table. A pthread mutex was used to protect the table from concurrent
-access. Duplicate usernames were detected and rejected with
-ERR 001 USERNAME_TAKEN.
+I developed and tested basic socket communication, registration and duplicate-name rejection, LIST, broadcast/private messaging, rooms, file transfer, disconnect cleanup and logging. The server uses socket(), bind(), listen() and accept(); clients use socket() and connect(). Tests used 127.0.0.1:10480. Git records the actual implementation sequence; I have not assigned retrospective dates to these earlier stages here.
 
-## Messaging
-LIST was implemented to return all currently connected users. I then
-implemented BCAST and PMSG. The client was updated with a separate
-receiver thread so that it could receive messages while the main thread
-continued accepting user commands.
+TCP framing was a central design issue. Text lines end in a newline, while file headers are followed by an exact raw-byte payload. recv_line(), recv_exact() and send_all() handle the stream. The server stores files under ./storage/IT23634480/<sender_username>/<filename>. I compared original, stored and received copies using SHA-256.
 
-## Room Management
-I created a room structure containing the room name and member socket
-list. JOIN creates a room when necessary, LEAVE removes a client from a
-room, ROOMS lists available rooms, and RMSG forwards messages only to
-room members.
+## October 6, 2026 — Review, corrections and retesting
 
-## TCP Framing
-An important issue was that TCP does not preserve application message
-boundaries. I implemented recv_line() for newline-terminated protocol
-messages and send_all() to make sure an entire output buffer is sent.
+Manual testing exposed missing join/leave notifications, acceptance of room messages from non-members, and an extra invalid-command error after sending a file to an unknown user. I uploaded my sources to ChatGPT/Codex. The assistant produced corrected C files and ran 13 automated regression test groups, including concurrent file/message framing. I then installed and compiled the corrected files in Ubuntu and retested their behaviour myself.
 
-## File Transfer
-SENDFILE was one of the most challenging parts. I implemented
-recv_exact() so that the exact declared number of raw file bytes is
-received even when several recv() calls are required.
+The fixes add presence notifications and room sender membership checks. The server consumes valid bounded file payloads before reporting target errors. Socket write locks keep file headers and payloads together. Additional changes validate input and file paths and improve client disconnect handling.
 
-The server stores a copy using the personalised path:
+My Ubuntu retests confirmed clean compilation, JOIN/LEAVE notifications, QUIT and Ctrl+C cleanup, five connected users, broadcast delivery, private/room isolation, LEAVE behaviour, user/room file delivery, matching hashes for the 23-byte test file, unknown-target rejection and malformed-command responses. I checked port 10480 with ss and timestamped events in the log. I committed and pushed the corrected sources and supporting results as ab309c8.
 
-./storage/IT23634480/<sender_username>/<filename>
+## Remaining work and limitations
 
-Files can be sent to an individual user or to a room.
-
-I verified file integrity using SHA-256. The original file, the server
-copy and the receiver copy produced the same hash.
-
-## Error and Disconnect Handling
-I tested duplicate usernames, unknown users, unknown rooms, invalid
-commands, graceful QUIT and unexpected client termination. When a
-client disconnects unexpectedly, the server removes the user from the
-active client list and room memberships.
-
-## Logging and Final Testing
-I added timestamped logging to netmsg_IT23634480.log. The log records
-connections, registrations, messages, file transfers and disconnect
-events.
-
-Finally, I tested the server with five simultaneous clients and
-confirmed all five connected users with LIST.
+I still need to complete the report and submission package and prepare to explain the code in the viva. Blocking sends can delay other operations; TLS, authentication and persistent history are not implemented.

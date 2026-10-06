@@ -4,7 +4,9 @@
 Registration Number: IT23634480
 
 ## AI Tool Used
-ChatGPT
+ChatGPT / Codex
+
+Record note: The earlier prompt entries below summarise requests and use; they are not verified verbatim transcripts. October 6 assistance included direct source-code patches and automated tests, as recorded in Interaction 12.
 
 ---
 
@@ -179,3 +181,27 @@ requirements and the implementation evidence collected during testing.
 ### My Evaluation / Changes
 I kept the documentation specific to my actual implementation and
 screenshots rather than describing features that were not tested.
+
+---
+
+## Interaction 12 — October 6, 2026: Source review and defect correction
+
+### Request summary
+I asked the assistant to help test whether my app met the assignment options, then provided source files after failures were identified.
+
+### How the AI output was used
+The assistant directly patched server_4480.c and client_4480.c. Changes included join/leave notifications, room sender membership checks, rejected-file payload handling, serialization of file headers/payloads, safer input/path validation and improved disconnect handling. It compiled the sources and ran 13 automated regression test groups in its own environment.
+
+### My evaluation / changes
+I installed the corrected files in Ubuntu, compiled them and retested presence notifications, graceful/abrupt cleanup, user and room transfers, rejection paths, hash equality, five clients, broadcast delivery, private/room isolation, LEAVE, malformed commands, the listening port and logs. I pushed the corrections as commit ab309c8. TEST_RESULTS.txt describes the assistant's automated tests; my screenshots show my separate manual tests.
+
+## Interaction 13 — October 6, 2026: Documentation update
+
+### Request summary
+I continued the assignment review by uploading the project ZIP so the assistant could check the README, diary, prompt log and reflection.
+
+### How the AI output was used
+The assistant found that the README ended inside its compilation code block and that the documents omitted the October 6 fixes. It drafted updated English documentation and an explicit account of AI code assistance.
+
+### My evaluation / changes
+The reflection is a draft to review against my own understanding. Documentation does not replace the final report, required screenshots or viva preparation.

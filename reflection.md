@@ -1,47 +1,15 @@
 # NetMessenger Reflection
 
-## Registration Number
-IT23634480
+Registration number: IT23634480
 
-During this assignment, I used ChatGPT as a learning and development
-assistant. I did not use it only to generate a final program. Instead,
-I followed a step-by-step process where I implemented and tested each
-feature before moving to the next one. AI was mainly used to help me
-understand the assignment specification, design the client-server
-architecture, explain socket programming concepts, suggest code
-structures, debug compiler errors, and organise the final
-documentation.
+Review note: This is an AI-assisted draft based on the recorded development and tests. I must review the first-person statements and revise them to match my own understanding before submission.
 
-The most useful AI support was the explanation of TCP socket
-communication and concurrency. It helped me understand the purpose of
-socket(), bind(), listen(), accept(), connect(), pthreads and mutexes.
-It was also useful when implementing TCP framing. I learned that TCP is
-a byte stream and one recv() call does not necessarily correspond to
-one complete application message. This led to the implementation of
-recv_line(), recv_exact() and send_all().
+I used ChatGPT/Codex for both explanation and code assistance during NetMessenger development. The assistance included example implementations, debugging guidance, documentation drafts and corrected source files. On October 6, I uploaded my C files after manual tests revealed defects. The assistant produced patches and ran automated regression tests. I installed those files in Ubuntu, compiled them and repeated the relevant tests. This distinction matters: AI-produced code and automated results should be acknowledged separately from tests I performed myself.
 
-AI output was not always directly usable. One example was when
-recv_line() was referenced before the compiler had seen its
-declaration. This produced an implicit declaration and conflicting type
-compiler error. I had to identify the cause, move or declare the
-function correctly, and then recompile. This showed me that generated
-code still has to be understood, compiled and verified rather than
-copied without checking.
+Four representative requests shaped the work. First, I asked for a step-by-step explanation of the assignment; this helped organise the mandatory commands and personalised values. Second, I asked how to support several clients; the pthread approach helped me understand the listening socket, accepted sockets and shared state. Third, I asked about partial recv() calls and TCP framing; this clarified why a single receive does not guarantee a complete application message. Fourth, I requested help checking and correcting the application after test failures; that review exposed missing presence notifications, insufficient room permissions and misaligned input following a rejected file transfer. These are summaries of the requests, not verbatim quotations.
 
-I also modified and tested the file-transfer design carefully. The
-SENDFILE command had to be followed by an exact number of raw bytes.
-After implementing the transfer, I created a 32-byte test file and
-compared the SHA-256 hash of the original file, the server-stored copy,
-and the receiver copy. All three hashes matched. This gave me
-confidence that the transfer was complete and unmodified.
+The most useful lesson was that successful normal operation does not prove correct error handling. A room message reached members correctly, yet a non-member could also send to that room. Sending a file to an unknown user returned the expected error, but unread payload bytes then produced an extra invalid-command response. The corrected design checks membership and consumes a valid bounded file payload before rejecting its target. I verified both behaviours through the terminal tests.
 
-The assignment improved my understanding of multi-client network
-programming. I learned how a server can use one listening socket while
-accept() returns a different connected socket for each client. I also
-learned why shared user and room data need mutex protection in a
-threaded server. Testing unexpected client termination helped me
-understand why connection cleanup is important.
+I also used concrete evidence to check successful transfers. The original, received and server-stored copies of the 23-byte test file had matching sizes and SHA-256 hashes. Five-client tests checked broadcast delivery and private/room isolation. QUIT and Ctrl+C tests checked user removal and leave notifications. Invalid commands were followed by LIST to confirm the connection still worked, and I inspected the listening port and timestamped log.
 
-Overall, AI was most useful as a guide for design, explanation and
-debugging, but the important learning came from implementing,
-compiling, testing, fixing errors and verifying the behaviour myself.
+AI assistance accelerated development, but I remain responsible for understanding and explaining the final code. Before the viva, I need to practise the byte-stream protocol, worker threads, mutexes and cleanup paths. I also recognise the remaining limitations: blocking I/O can delay clients, and the application does not provide TLS, password authentication or persistent history.
