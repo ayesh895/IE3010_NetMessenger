@@ -104,3 +104,36 @@ README_FIXES.md describes the corrections and limitations. design_diary.md recor
 - Clients launched in the same directory share the received directory; identical filenames may overwrite an earlier download.
 - File names are single protocol tokens. Path separators and unsafe names are rejected.
 - A successful sender acknowledgement is not a recipient-issued end-to-end receipt. Check the recipient output and hashes for delivery evidence.
+
+## Optional Feature: Per-Client Chat Rate Limiting
+
+The server limits each registered client connection to 10 chat
+command attempts per 5-second fixed window. BCAST, PMSG and RMSG
+share the same counter. Malformed commands with these prefixes
+also count as attempts.
+
+The window starts with the first chat attempt. After the window
+expires, the next chat attempt starts a new window. Elapsed time
+is measured using CLOCK_MONOTONIC.
+
+Additional chat attempts within the window receive:
+
+    ERR 011 RATE_LIMITED NID:6344
+
+Rejected commands are not dispatched. The connection remains
+open, and other commands such as LIST and QUIT remain available.
+Each client has an independent counter in its handler thread.
+
+Rate-limit rejections are recorded in netmsg_IT23634480.log.
+
+Verified tests:
+- The first 10 rapid BCAST commands were accepted.
+- The 11th command was rejected with ERR 011.
+- LIST worked while the client was rate limited.
+- Sending resumed after waiting 6 seconds.
+- A second client could send while the first was rate limited.
+- PMSG and RMSG shared the same limit.
+- QUIT worked while the client was rate limited.
+
+This feature limits chat attempts only. It does not limit file
+transfers or other commands. Reconnecting creates a new counter.

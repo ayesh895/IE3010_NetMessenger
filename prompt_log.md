@@ -205,3 +205,38 @@ The assistant found that the README ended inside its compilation code block and 
 
 ### My evaluation / changes
 The reflection is a draft to review against my own understanding. Documentation does not replace the final report, required screenshots or viva preparation.
+
+### Interaction 14 — Optional Chat Rate Limiting
+Date: 6 October 2026
+
+Request summary:
+Asked for help adding an optional rate-limiting feature, requested
+the complete server code, and asked how to restart and test it.
+This is a summary of the conversation, not a verbatim transcript.
+
+AI assistance:
+Provided step-by-step implementation guidance and the complete
+server source with a per-connection limit of 10 combined BCAST,
+PMSG and RMSG attempts per 5-second fixed window. Provided Python
+socket tests and draft README and design diary entries.
+
+Implementation:
+The server uses CLOCK_MONOTONIC and variables local to each client
+handler. Excess chat attempts receive ERR 011 RATE_LIMITED.
+Other commands remain available, and rejections are logged.
+
+Verification:
+I compiled and restarted the server on Ubuntu, then ran the
+provided tests. Results confirmed acceptance of 10 rapid messages,
+rejection of the 11th, recovery after waiting, independent client
+counters, shared limits across chat commands, and continued LIST
+and QUIT operation. I also checked the rate-limit log entries.
+
+Outcome:
+Committed the server implementation as 1d9a060 on the
+feature/rate-limiting branch. Documentation was updated to describe
+the feature and its limits.
+
+Limitations:
+Reconnecting resets the counter. File transfers and other commands
+are not rate limited.

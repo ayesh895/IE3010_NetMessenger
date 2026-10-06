@@ -23,3 +23,28 @@ My Ubuntu retests confirmed clean compilation, JOIN/LEAVE notifications, QUIT an
 ## Remaining work and limitations
 
 I still need to complete the report and submission package and prepare to explain the code in the viva. Blocking sends can delay other operations; TLS, authentication and persistent history are not implemented.
+
+### 6 October 2026 — Optional Chat Rate Limiting
+
+Added per-client rate limiting on the feature/rate-limiting branch
+after preserving the tested core implementation in Git.
+
+Each connection can submit 10 BCAST, PMSG or RMSG attempts within
+a 5-second fixed window. The counter and window start time are
+local to the client handler thread, so clients have independent
+limits. CLOCK_MONOTONIC measures elapsed time. Excess attempts
+receive ERR 011 RATE_LIMITED without closing the connection.
+
+AI assistance provided implementation guidance, complete server
+code and Python socket test commands. I installed and compiled
+the code, restarted the server and ran the tests on my Ubuntu VM.
+
+Tests confirmed burst rejection, recovery after the window,
+independent client counters, the shared limit across chat commands,
+and continued LIST and QUIT operation. Rejections appeared in the
+timestamped server log.
+
+Implementation commit: 1d9a060.
+
+Current limitation: reconnecting resets the counter, and file
+transfers and other commands are outside this chat-only limit.

@@ -13,3 +13,11 @@ The most useful lesson was that successful normal operation does not prove corre
 I also used concrete evidence to check successful transfers. The original, received and server-stored copies of the 23-byte test file had matching sizes and SHA-256 hashes. Five-client tests checked broadcast delivery and private/room isolation. QUIT and Ctrl+C tests checked user removal and leave notifications. Invalid commands were followed by LIST to confirm the connection still worked, and I inspected the listening port and timestamped log.
 
 AI assistance accelerated development, but I remain responsible for understanding and explaining the final code. Before the viva, I need to practise the byte-stream protocol, worker threads, mutexes and cleanup paths. I also recognise the remaining limitations: blocking I/O can delay clients, and the application does not provide TLS, password authentication or persistent history.
+
+For the optional rate-limiting feature, AI supplied implementation
+guidance, complete server code and Python socket tests. I compiled
+and restarted the server, then verified burst rejection, recovery,
+independent client counters, and continued LIST and QUIT operation.
+The implementation uses a monotonic clock and a counter local to
+each client handler. Its scope is limited to chat attempts;
+reconnecting resets the counter.
