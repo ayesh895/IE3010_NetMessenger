@@ -1,3 +1,7 @@
+#include <poll.h>
+#include <stdatomic.h>
+#include <errno.h>
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,6 +13,8 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+
+static atomic_int connection_closed = 0;
 
 #define PORT 10480
 #define SERVER_IP "127.0.0.1"
@@ -34,8 +40,9 @@ ssize_t send_all(int socket_fd,
             send(socket_fd,
                  data + total,
                  length - total,
-                 0);
+                 MSG_NOSIGNAL);
 
+        if (sent < 0 && errno == EINTR) continue;
         if (sent <= 0)
         {
             return -1;
@@ -61,8 +68,9 @@ ssize_t recv_exact(int socket_fd,
             recv(socket_fd,
                  data + total,
                  length - total,
-                 0);
+                 MSG_NOSIGNAL);
 
+        if (received < 0 && errno == EINTR) continue;
         if (received <= 0)
         {
             return received;
@@ -75,43 +83,24 @@ ssize_t recv_exact(int socket_fd,
 }
 
 
-ssize_t recv_line(int socket_fd,
-                  char *buffer,
-                  size_t max_size)
+/* A complete line is required; an oversized line is a framing error. */
+ssize_t recv_line(int socket_fd, char *buffer, size_t max_size)
 {
     size_t position = 0;
-
-    while (position < max_size - 1)
-    {
+    while (position < max_size - 1) {
         char ch;
-
-        ssize_t received =
-            recv(socket_fd,
-                 &ch,
-                 1,
-                 0);
-
-        if (received == 0)
-        {
-            return 0;
-        }
-
-        if (received < 0)
-        {
-            return -1;
-        }
-
+        ssize_t n = recv(socket_fd, &ch, 1, 0);
+        if (n < 0 && errno == EINTR) continue;
+        if (n <= 0) return n;
+        if (ch == '\0') { errno = EPROTO; return -1; }
         buffer[position++] = ch;
-
-        if (ch == '\n')
-        {
-            break;
+        if (ch == '\n') {
+            buffer[position] = '\0';
+            return (ssize_t)position;
         }
     }
-
-    buffer[position] = '\0';
-
-    return (ssize_t)position;
+    errno = EMSGSIZE;
+    return -2;
 }
 
 
@@ -127,6 +116,7 @@ void receive_file(int client_socket,
         filesize > MAX_FILE_SIZE)
     {
         printf("\nInvalid incoming file size.\n");
+        shutdown(client_socket, SHUT_RDWR);
         return;
     }
 
@@ -140,6 +130,7 @@ void receive_file(int client_socket,
         if (file_data == NULL)
         {
             printf("\nMemory allocation failed.\n");
+            shutdown(client_socket, SHUT_RDWR);
             return;
         }
 
@@ -151,11 +142,19 @@ void receive_file(int client_socket,
         if (received != filesize)
         {
             printf("\nFile receive failed.\n");
+            shutdown(client_socket, SHUT_RDWR);
 
             free(file_data);
 
             return;
         }
+    }
+
+    if (!filename[0] || strstr(filename, "..") || strchr(filename, '/') ||
+        strchr(filename, '\\') || strcmp(filename, ".") == 0) {
+        printf("\nInvalid incoming filename.\n");
+        free(file_data);
+        return;
     }
 
     mkdir("received",
@@ -181,17 +180,15 @@ void receive_file(int client_socket,
         return;
     }
 
-    if (filesize > 0)
-    {
-        fwrite(file_data,
-               1,
-               (size_t)filesize,
-               fp);
-    }
-
-    fclose(fp);
-
+    int stored = filesize == 0 ||
+                 fwrite(file_data, 1, (size_t)filesize, fp) == (size_t)filesize;
+    if (fclose(fp) != 0) stored = 0;
     free(file_data);
+    if (!stored) {
+        unlink(path);
+        printf("\nFailed to save received file.\n");
+        return;
+    }
 
     printf("\nFile received successfully: %s (%ld bytes)\n",
            path,
@@ -255,6 +252,8 @@ void *receiver_thread(void *arg)
             else
             {
                 printf("\nInvalid file header received.\n");
+                shutdown(client_socket, SHUT_RDWR);
+                break;
             }
         }
         else
@@ -267,6 +266,7 @@ void *receiver_thread(void *arg)
         fflush(stdout);
     }
 
+    atomic_store(&connection_closed, 1);
     return NULL;
 }
 
@@ -416,6 +416,7 @@ int send_file_command(int client_socket,
     if (total_sent != actual_size)
     {
         printf("File send incomplete.\n");
+        shutdown(client_socket, SHUT_RDWR);
 
         return -1;
     }
@@ -433,6 +434,7 @@ int send_file_command(int client_socket,
 
 int main()
 {
+    setvbuf(stdin, NULL, _IONBF, 0);
     int client_socket;
 
     struct sockaddr_in server_addr;
@@ -578,7 +580,7 @@ int main()
         return 1;
     }
 
-    pthread_detach(recv_thread);
+    /* Joined during shutdown so the receiver never uses a closed socket. */
 
 
     /*
@@ -604,6 +606,7 @@ int main()
     printf("  QUIT\n");
 
 
+    int recv_thread_joined = 0;
     /* Main keyboard command loop */
 
     while (1)
@@ -613,6 +616,14 @@ int main()
         fflush(stdout);
 
 
+        struct pollfd input = { .fd = STDIN_FILENO, .events = POLLIN };
+        int ready;
+        do {
+            ready = poll(&input, 1, 100);
+        } while (ready == 0 && !atomic_load(&connection_closed));
+        if (atomic_load(&connection_closed)) break;
+        if (ready < 0) { if (errno == EINTR) continue; break; }
+
         if (fgets(command,
                   sizeof(command),
                   stdin) == NULL)
@@ -620,6 +631,13 @@ int main()
             break;
         }
 
+
+        if (!strchr(command, '\n')) {
+            int ch;
+            while ((ch = getchar()) != '\n' && ch != EOF) {}
+            printf("Command too long or missing newline; not sent.\n");
+            continue;
+        }
 
         /*
          * File transfer command
@@ -653,13 +671,14 @@ int main()
          * After sending it, do not accept more
          * keyboard commands.
          *
-         * Give receiver thread a short moment
-         * to display OK BYE before shutdown.
+         * Wait for the receiver to display OK BYE
+         * and observe the server closing the connection.
          */
         if (strcmp(command,
                    "QUIT\n") == 0)
         {
-            sleep(1);
+            pthread_join(recv_thread, NULL);
+            recv_thread_joined = 1;
 
             break;
         }
@@ -672,6 +691,7 @@ int main()
     shutdown(client_socket,
              SHUT_RDWR);
 
+    if (!recv_thread_joined) pthread_join(recv_thread, NULL);
     close(client_socket);
 
 

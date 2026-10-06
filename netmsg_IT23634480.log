@@ -30,3 +30,115 @@
 [2026-10-04 00:10:19] CONNECT socket=8
 [2026-10-04 00:10:22] REGISTER username=nimal socket=8
 [2026-10-04 00:18:24] SERVER_START port=10480 NID=6344
+[2026-10-06 12:51:47] SERVER_START port=10480 NID=6344
+[2026-10-06 12:53:43] CONNECT socket=4
+[2026-10-06 12:53:54] REGISTER username=ayesh socket=4
+[2026-10-06 12:55:19] CONNECT socket=5
+[2026-10-06 12:55:22] REGISTER_FAILED username=ayesh reason=USERNAME_TAKEN
+[2026-10-06 12:58:47] CONNECT socket=6
+[2026-10-06 12:58:50] REGISTER username=nimal socket=6
+[2026-10-06 13:03:50] BCAST sender=ayesh message=Hello everyone
+[2026-10-06 13:06:30] PMSG sender=nimal target=ayesh message=Hello Ayesh this is a private message
+[2026-10-06 13:08:41] PMSG_FAILED sender=ayesh target=unknownuser reason=USER_NOT_FOUND
+[2026-10-06 13:09:36] PMSG_FAILED sender=nimal target=unknownuser reason=USER_NOT_FOUND
+[2026-10-06 13:11:04] JOIN username=ayesh room=labroom
+[2026-10-06 13:11:27] JOIN username=nimal room=labroom
+[2026-10-06 13:13:27] RMSG sender=ayesh room=labroom message=Hello labroom members
+[2026-10-06 13:14:51] LEAVE username=nimal room=labroom
+[2026-10-06 13:15:33] RMSG sender=ayesh room=labroom message=Message after nimal left
+[2026-10-06 13:19:11] RMSG sender=nimal room=labroom message=I am not a member
+[2026-10-06 13:50:49] FILE sender=ayesh target=nimal filename=transfer_test.txt size=23 stored=storage/IT23634480/ayesh/transfer_test.txt
+[2026-10-06 13:57:27] JOIN username=nimal room=labroom
+[2026-10-06 13:58:14] FILE sender=ayesh target=labroom filename=transfer_test.txt size=23 stored=storage/IT23634480/ayesh/transfer_test.txt
+[2026-10-06 14:00:12] PMSG sender=ayesh target=nimal message=Message after file transfer
+[2026-10-06 14:02:02] CONNECT socket=5
+[2026-10-06 14:02:06] REGISTER username=kamal socket=5
+[2026-10-06 14:02:33] CONNECT socket=7
+[2026-10-06 14:02:40] REGISTER username=binura socket=7
+[2026-10-06 14:03:20] CONNECT socket=8
+[2026-10-06 14:03:27] REGISTER username=milinda socket=8
+[2026-10-06 14:04:52] BCAST sender=ayesh message=Five client broadcast test
+[2026-10-06 14:09:34] PMSG sender=ayesh target=kamal message=Pvt message only for kamal
+[2026-10-06 14:12:09] RMSG sender=ayesh room=labroom message=only lab member should recieved this
+[2026-10-06 14:14:41] QUIT username=milinda
+[2026-10-06 14:17:30] DISCONNECT username=nimal
+[2026-10-06 14:46:49] SERVER_START port=10480 NID=6344
+[2026-10-06 14:47:11] CONNECT socket=4
+[2026-10-06 14:47:13] REGISTER username=ayesh socket=4
+[2026-10-06 14:47:21] CONNECT socket=5
+[2026-10-06 14:47:25] REGISTER username=nimal socket=5
+[2026-10-06 14:47:29] CONNECT socket=6
+[2026-10-06 14:47:31] REGISTER username=kamal socket=6
+[2026-10-06 14:47:35] CONNECT socket=7
+[2026-10-06 14:47:39] REGISTER username=binura socket=7
+[2026-10-06 14:47:51] CONNECT socket=8
+[2026-10-06 14:47:54] REGISTER username=milinda socket=8
+[2026-10-06 14:48:34] DISCONNECT username=nimal
+[2026-10-06 14:48:35] DISCONNECT username=ayesh
+[2026-10-06 14:50:20] SERVER_START port=10480 NID=6344
+[2026-10-06 14:50:38] CONNECT socket=4
+[2026-10-06 14:50:40] REGISTER username=ayesh socket=4
+[2026-10-06 14:50:51] CONNECT socket=5
+[2026-10-06 14:50:54] REGISTER username=nimal socket=5
+[2026-10-06 14:51:06] CONNECT socket=6
+[2026-10-06 14:51:10] REGISTER username=kamal socket=6
+[2026-10-06 14:51:20] CONNECT socket=7
+[2026-10-06 14:51:22] REGISTER username=binura socket=7
+[2026-10-06 14:51:30] CONNECT socket=8
+[2026-10-06 14:51:48] REGISTER username=milinda socket=8
+[2026-10-06 14:52:23] DISCONNECT username=nimal
+[2026-10-06 15:10:16] INVALID_COMMAND username=ayesh command=HELLO
+
+[2026-10-06 15:16:10] FILE sender=ayesh target=kamal filename=binary_test.bin size=4096 stored=storage/IT23634480/ayesh/binary_test.bin
+[2026-10-06 15:25:27] FILE_FAILED sender=ayesh target=unknownuser filename=transfer_test.txt reason=TARGET_NOT_FOUND
+[2026-10-06 15:25:27] INVALID_COMMAND username=ayesh command=NetMessenger file test
+
+[2026-10-06 15:36:28] DISCONNECT username=ayesh
+[2026-10-06 15:36:42] DISCONNECT username=kamal
+[2026-10-06 15:36:44] DISCONNECT username=binura
+[2026-10-06 15:36:45] DISCONNECT username=milinda
+[2026-10-06 15:41:42] SERVER_START port=10480 NID=6344
+[2026-10-06 15:41:51] CONNECT socket=4
+[2026-10-06 15:41:54] PRESENCE event=JOIN username=ayesh
+[2026-10-06 15:41:54] REGISTER username=ayesh socket=4
+[2026-10-06 15:42:13] CONNECT socket=5
+[2026-10-06 15:42:16] PRESENCE event=JOIN username=nimal
+[2026-10-06 15:42:16] REGISTER username=nimal socket=5
+[2026-10-06 15:43:17] QUIT username=nimal
+[2026-10-06 15:43:17] PRESENCE event=LEAVE username=nimal
+[2026-10-06 15:44:59] JOIN username=ayesh room=labroom
+[2026-10-06 15:45:09] CONNECT socket=6
+[2026-10-06 15:45:12] PRESENCE event=JOIN username=nimal
+[2026-10-06 15:45:12] REGISTER username=nimal socket=6
+[2026-10-06 15:45:47] RMSG_FAILED sender=nimal room=labroom reason=NOT_IN_ROOM
+[2026-10-06 15:48:21] FILE_FAILED sender=ayesh target=unknownuser filename=transfer_test.txt reason=TARGET_NOT_FOUND
+[2026-10-06 15:49:30] DISCONNECT username=nimal
+[2026-10-06 15:49:30] PRESENCE event=LEAVE username=nimal
+[2026-10-06 15:54:28] CONNECT socket=5
+[2026-10-06 15:54:31] PRESENCE event=JOIN username=nimal
+[2026-10-06 15:54:31] REGISTER username=nimal socket=5
+[2026-10-06 15:55:01] FILE sender=ayesh target=nimal filename=transfer_test.txt size=23 stored=storage/IT23634480/ayesh/transfer_test.txt
+[2026-10-06 15:59:33] FILE_FAILED sender=nimal target=labroom reason=NOT_IN_ROOM
+[2026-10-06 16:01:01] JOIN username=nimal room=labroom
+[2026-10-06 16:01:31] FILE sender=nimal target=labroom filename=transfer_test.txt size=23 stored=storage/IT23634480/nimal/transfer_test.txt
+[2026-10-06 16:02:56] PMSG sender=nimal target=ayesh message=Chat after room files
+[2026-10-06 16:03:53] RMSG sender=ayesh room=labroom message=Room chat after files
+[2026-10-06 16:05:24] CONNECT socket=6
+[2026-10-06 16:05:27] PRESENCE event=JOIN username=kamal
+[2026-10-06 16:05:27] REGISTER username=kamal socket=6
+[2026-10-06 16:05:33] CONNECT socket=7
+[2026-10-06 16:05:36] PRESENCE event=JOIN username=binura
+[2026-10-06 16:05:36] REGISTER username=binura socket=7
+[2026-10-06 16:05:41] CONNECT socket=8
+[2026-10-06 16:05:50] PRESENCE event=JOIN username=milinda
+[2026-10-06 16:05:50] REGISTER username=milinda socket=8
+[2026-10-06 16:07:56] BCAST sender=ayesh message=Updated version five_client test
+[2026-10-06 16:11:22] PMSG sender=ayesh target=kamal message=only kamal should receive this
+[2026-10-06 16:14:41] RMSG sender=ayesh room=labroom message=only room mem should receive this
+[2026-10-06 16:16:28] LEAVE username=nimal room=labroom
+[2026-10-06 16:17:11] RMSG sender=ayesh room=labroom message=Test after nimal leaves
+[2026-10-06 16:18:04] INVALID_COMMAND username=ayesh command=HELLO
+
+[2026-10-06 16:18:19] INVALID_FORMAT username=ayesh command=PMSG kamal
+
+[2026-10-06 16:23:12] DISCONNECT username=binura

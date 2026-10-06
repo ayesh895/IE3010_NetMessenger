@@ -1,3 +1,5 @@
+#include <errno.h>
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -138,7 +140,7 @@ void log_event(const char *format, ...)
    TCP HELPERS
    ========================================================= */
 
-ssize_t send_all(int socket_fd,
+ssize_t send_raw(int socket_fd,
                  const void *buffer,
                  size_t length)
 {
@@ -154,8 +156,9 @@ ssize_t send_all(int socket_fd,
             send(socket_fd,
                  data + total_sent,
                  length - total_sent,
-                 0);
+                 MSG_NOSIGNAL);
 
+        if (sent < 0 && errno == EINTR) continue;
         if (sent <= 0)
         {
             return -1;
@@ -168,6 +171,42 @@ ssize_t send_all(int socket_fd,
     return (ssize_t)total_sent;
 }
 
+
+/* Striped locks serialize writes to each socket. Collisions only serialize
+ * unrelated sockets; they never alter the TCP wire format. */
+#define SEND_LOCK_COUNT 64
+pthread_mutex_t send_locks[SEND_LOCK_COUNT];
+
+ssize_t send_all(int fd, const void *data, size_t length)
+{
+    pthread_mutex_t *lock = &send_locks[(unsigned)fd % SEND_LOCK_COUNT];
+    pthread_mutex_lock(lock);
+    ssize_t result = send_raw(fd, data, length);
+    pthread_mutex_unlock(lock);
+    return result;
+}
+
+int send_file_frame(int fd, const char *header, const void *data, size_t size)
+{
+    pthread_mutex_t *lock = &send_locks[(unsigned)fd % SEND_LOCK_COUNT];
+    pthread_mutex_lock(lock);
+    int ok = send_raw(fd, header, strlen(header)) >= 0;
+    if (ok && size) ok = send_raw(fd, data, size) >= 0;
+    if (!ok) shutdown(fd, SHUT_RDWR); /* A partial frame cannot be reused. */
+    pthread_mutex_unlock(lock);
+    return ok ? 0 : -1;
+}
+
+/* Restrict usernames to safe storage-directory components. */
+int valid_username(const char *name)
+{
+    size_t length = strlen(name);
+    if (!length || length >= USERNAME_SIZE || strstr(name, "..")) return 0;
+    for (size_t i = 0; i < length; i++)
+        if (!isalnum((unsigned char)name[i]) && name[i] != '_' &&
+            name[i] != '-' && name[i] != '.') return 0;
+    return strcmp(name, ".") != 0;
+}
 
 ssize_t recv_exact(int socket_fd,
                    void *buffer,
@@ -187,6 +226,7 @@ ssize_t recv_exact(int socket_fd,
                  length - total_received,
                  0);
 
+        if (received < 0 && errno == EINTR) continue;
         if (received <= 0)
         {
             return received;
@@ -200,47 +240,24 @@ ssize_t recv_exact(int socket_fd,
 }
 
 
-ssize_t recv_line(int socket_fd,
-                  char *buffer,
-                  size_t max_size)
+/* A complete line is required; an oversized line is a framing error. */
+ssize_t recv_line(int socket_fd, char *buffer, size_t max_size)
 {
     size_t position = 0;
-
-
-    while (position < max_size - 1)
-    {
+    while (position < max_size - 1) {
         char ch;
-
-        ssize_t received =
-            recv(socket_fd,
-                 &ch,
-                 1,
-                 0);
-
-        if (received == 0)
-        {
-            return 0;
-        }
-
-        if (received < 0)
-        {
-            return -1;
-        }
-
-        buffer[position++] =
-            ch;
-
-        if (ch == '\n')
-        {
-            break;
+        ssize_t n = recv(socket_fd, &ch, 1, 0);
+        if (n < 0 && errno == EINTR) continue;
+        if (n <= 0) return n;
+        if (ch == '\0') { errno = EPROTO; return -1; }
+        buffer[position++] = ch;
+        if (ch == '\n') {
+            buffer[position] = '\0';
+            return (ssize_t)position;
         }
     }
-
-
-    buffer[position] =
-        '\0';
-
-    return (ssize_t)position;
+    errno = EMSGSIZE;
+    return -2;
 }
 
 
@@ -343,6 +360,19 @@ void remove_client(int socket)
     pthread_mutex_unlock(&clients_mutex);
 }
 
+
+/* Network presence is separate from room JOIN/LEAVE commands. */
+void notify_presence(int excluded_socket, const char *event, const char *username)
+{
+    char message[200];
+    snprintf(message, sizeof(message), "MSG %s %s\n", event, username);
+    pthread_mutex_lock(&clients_mutex);
+    for (int i = 0; i < MAX_CLIENTS; i++)
+        if (clients[i].active && clients[i].socket != excluded_socket)
+            send_all(clients[i].socket, message, strlen(message));
+    pthread_mutex_unlock(&clients_mutex);
+    log_event("PRESENCE event=%s username=%s", event, username);
+}
 
 /* =========================================================
    ROOM MANAGEMENT
@@ -893,6 +923,15 @@ void handle_rmsg(int sender_socket,
     }
 
 
+    if (!client_is_room_member(room_index, sender_socket)) {
+        pthread_mutex_unlock(&rooms_mutex);
+        const char *error = "ERR 006 NOT_IN_ROOM NID:6344\n";
+        send_all(sender_socket, error, strlen(error));
+        log_event("RMSG_FAILED sender=%s room=%s reason=NOT_IN_ROOM",
+                  sender_username, room_name);
+        return;
+    }
+
     char outgoing[1200];
 
 
@@ -947,7 +986,8 @@ int create_storage_path(const char *sender_username,
                         char *output,
                         size_t output_size)
 {
-    if (strstr(filename,
+    if (!valid_username(sender_username) || strchr(filename, '\\') ||
+        strcmp(filename, ".") == 0 || strstr(filename,
                "..") != NULL ||
         strchr(filename,
                '/') != NULL)
@@ -999,13 +1039,13 @@ void handle_sendfile(int sender_socket,
     char target[100];
     char filename[256];
     long filesize;
-
+    char extra;
 
     if (sscanf(header,
-               "SENDFILE %99s %255s %ld",
+               "SENDFILE %99s %255s %ld %c",
                target,
                filename,
-               &filesize) != 3)
+               &filesize, &extra) != 3)
     {
         char *error =
             "ERR 007 INVALID_FORMAT NID:6344\n";
@@ -1016,6 +1056,7 @@ void handle_sendfile(int sender_socket,
                  strlen(error));
 
 
+        shutdown(sender_socket, SHUT_RDWR);
         return;
     }
 
@@ -1038,7 +1079,58 @@ void handle_sendfile(int sender_socket,
                   filename);
 
 
+        shutdown(sender_socket, SHUT_RDWR);
         return;
+    }
+
+
+    char *file_data = NULL;
+
+
+    if (filesize > 0)
+    {
+        file_data =
+            malloc((size_t)filesize);
+
+
+        if (file_data == NULL)
+        {
+            char *error =
+                "ERR 010 SERVER_ERROR NID:6344\n";
+
+
+            send_all(sender_socket,
+                     error,
+                     strlen(error));
+
+            shutdown(sender_socket, SHUT_RDWR);
+            return;
+        }
+
+
+        ssize_t received =
+            recv_exact(sender_socket,
+                       file_data,
+                       (size_t)filesize);
+
+
+        if (received != filesize)
+        {
+            printf("Incomplete file received from %s.\n",
+                   sender_username);
+
+
+            log_event("FILE_FAILED sender=%s target=%s filename=%s reason=INCOMPLETE_TRANSFER",
+                      sender_username,
+                      target,
+                      filename);
+
+
+            free(file_data);
+
+
+            return;
+        }
     }
 
 
@@ -1079,59 +1171,25 @@ void handle_sendfile(int sender_socket,
                   filename);
 
 
+        free(file_data);
         return;
     }
 
 
-    char *file_data = NULL;
-
-
-    if (filesize > 0)
-    {
-        file_data =
-            malloc((size_t)filesize);
-
-
-        if (file_data == NULL)
-        {
-            char *error =
-                "ERR 010 SERVER_ERROR NID:6344\n";
-
-
-            send_all(sender_socket,
-                     error,
-                     strlen(error));
-
-
-            return;
-        }
-
-
-        ssize_t received =
-            recv_exact(sender_socket,
-                       file_data,
-                       (size_t)filesize);
-
-
-        if (received != filesize)
-        {
-            printf("Incomplete file received from %s.\n",
-                   sender_username);
-
-
-            log_event("FILE_FAILED sender=%s target=%s filename=%s reason=INCOMPLETE_TRANSFER",
-                      sender_username,
-                      target,
-                      filename);
-
-
+    if (target_socket == -1) {
+        pthread_mutex_lock(&rooms_mutex);
+        int allowed = rooms[room_index].active &&
+                      client_is_room_member(room_index, sender_socket);
+        pthread_mutex_unlock(&rooms_mutex);
+        if (!allowed) {
+            const char *error = "ERR 006 NOT_IN_ROOM NID:6344\n";
+            send_all(sender_socket, error, strlen(error));
+            log_event("FILE_FAILED sender=%s target=%s reason=NOT_IN_ROOM",
+                      sender_username, target);
             free(file_data);
-
-
             return;
         }
     }
-
 
     char storage_path[1024];
 
@@ -1183,17 +1241,16 @@ void handle_sendfile(int sender_socket,
     }
 
 
-    if (filesize > 0)
-    {
-        fwrite(file_data,
-               1,
-               (size_t)filesize,
-               fp);
+    int stored = filesize == 0 ||
+                 fwrite(file_data, 1, (size_t)filesize, fp) == (size_t)filesize;
+    if (fclose(fp) != 0) stored = 0;
+    if (!stored) {
+        unlink(storage_path);
+        const char *error = "ERR 010 STORAGE_FAILED NID:6344\n";
+        send_all(sender_socket, error, strlen(error));
+        free(file_data);
+        return;
     }
-
-
-    fclose(fp);
-
 
     printf("Stored file: %s (%ld bytes)\n",
            storage_path,
@@ -1211,69 +1268,29 @@ void handle_sendfile(int sender_socket,
              filesize);
 
 
-    if (target_socket != -1)
-    {
-        send_all(target_socket,
-                 outgoing_header,
-                 strlen(outgoing_header));
-
-
-        if (filesize > 0)
-        {
-            send_all(target_socket,
-                     file_data,
-                     (size_t)filesize);
-        }
-    }
-    else
-    {
-        int member_sockets[MAX_CLIENTS];
-
-        int member_count = 0;
-
-
+    int delivery_failed = 0;
+    if (target_socket != -1) {
+        delivery_failed = send_file_frame(target_socket, outgoing_header,
+                                         file_data, (size_t)filesize) < 0;
+    } else {
+        /* Hold membership stable throughout delivery. */
         pthread_mutex_lock(&rooms_mutex);
-
-
-        for (int i = 0;
-             i < rooms[room_index].member_count;
-             i++)
-        {
-            int member_socket =
-                rooms[room_index]
-                    .member_sockets[i];
-
-
-            if (member_socket !=
-                sender_socket)
-            {
-                member_sockets[member_count++] =
-                    member_socket;
-            }
+        for (int i = 0; i < rooms[room_index].member_count; i++) {
+            int fd = rooms[room_index].member_sockets[i];
+            if (fd != sender_socket &&
+                send_file_frame(fd, outgoing_header, file_data,
+                                (size_t)filesize) < 0) delivery_failed = 1;
         }
-
-
         pthread_mutex_unlock(&rooms_mutex);
-
-
-        for (int i = 0;
-             i < member_count;
-             i++)
-        {
-            send_all(member_sockets[i],
-                     outgoing_header,
-                     strlen(outgoing_header));
-
-
-            if (filesize > 0)
-            {
-                send_all(member_sockets[i],
-                         file_data,
-                         (size_t)filesize);
-            }
-        }
     }
-
+    if (delivery_failed) {
+        const char *error = "ERR 010 DELIVERY_FAILED NID:6344\n";
+        send_all(sender_socket, error, strlen(error));
+        log_event("FILE_FAILED sender=%s target=%s reason=DELIVERY_FAILED",
+                  sender_username, target);
+        free(file_data);
+        return;
+    }
 
     char response[512];
 
@@ -1354,29 +1371,15 @@ void *client_handler(void *arg)
            buffer);
 
 
-    if (sscanf(buffer,
-               "REGISTER %49s",
-               username) != 1)
-    {
-        char *error =
-            "ERR 005 INVALID_COMMAND NID:6344\n";
-
-
-        send_all(client_socket,
-                 error,
-                 strlen(error));
-
-
-        log_event("REGISTER_FAILED socket=%d reason=INVALID_COMMAND",
-                  client_socket);
-
-
+    char extra;
+    if (sscanf(buffer, "REGISTER %49s %c", username, &extra) != 1 ||
+        !valid_username(username)) {
+        const char *error = "ERR 007 INVALID_USERNAME NID:6344\n";
+        send_all(client_socket, error, strlen(error));
+        log_event("REGISTER_FAILED socket=%d reason=INVALID_USERNAME", client_socket);
         close(client_socket);
-
-
         return NULL;
     }
-
 
     pthread_mutex_lock(&clients_mutex);
 
@@ -1457,7 +1460,7 @@ void *client_handler(void *arg)
         1;
 
 
-    pthread_mutex_unlock(&clients_mutex);
+
 
 
     char response[200];
@@ -1473,6 +1476,9 @@ void *client_handler(void *arg)
              response,
              strlen(response));
 
+
+    pthread_mutex_unlock(&clients_mutex);
+    notify_presence(client_socket, "JOIN", username);
 
     printf("User registered: %s\n",
            username);
@@ -1516,6 +1522,13 @@ void *client_handler(void *arg)
         }
 
 
+        if (bytes_received == -2) {
+            const char *error = "ERR 007 LINE_TOO_LONG NID:6344\n";
+            send_all(client_socket, error, strlen(error));
+            log_event("INVALID_COMMAND username=%s reason=LINE_TOO_LONG", username);
+            break; /* Remaining bytes have no reliable command boundary. */
+        }
+
         if (bytes_received < 0)
         {
             perror("recv_line");
@@ -1552,7 +1565,7 @@ void *client_handler(void *arg)
                          "BCAST ",
                          6) == 0)
         {
-            char message[900];
+            char message[1024];
 
 
             strcpy(message,
@@ -1569,6 +1582,7 @@ void *client_handler(void *arg)
             {
                 char *error =
                     "ERR 007 INVALID_FORMAT NID:6344\n";
+                log_event("INVALID_FORMAT username=%s command=%s", username, buffer);
 
 
                 send_all(client_socket,
@@ -1616,6 +1630,7 @@ void *client_handler(void *arg)
             {
                 char *error =
                     "ERR 007 INVALID_FORMAT NID:6344\n";
+                log_event("INVALID_FORMAT username=%s command=%s", username, buffer);
 
 
                 send_all(client_socket,
@@ -1644,6 +1659,7 @@ void *client_handler(void *arg)
             {
                 char *error =
                     "ERR 007 INVALID_FORMAT NID:6344\n";
+                log_event("INVALID_FORMAT username=%s command=%s", username, buffer);
 
 
                 send_all(client_socket,
@@ -1672,6 +1688,7 @@ void *client_handler(void *arg)
             {
                 char *error =
                     "ERR 007 INVALID_FORMAT NID:6344\n";
+                log_event("INVALID_FORMAT username=%s command=%s", username, buffer);
 
 
                 send_all(client_socket,
@@ -1713,6 +1730,7 @@ void *client_handler(void *arg)
             {
                 char *error =
                     "ERR 007 INVALID_FORMAT NID:6344\n";
+                log_event("INVALID_FORMAT username=%s command=%s", username, buffer);
 
 
                 send_all(client_socket,
@@ -1782,6 +1800,8 @@ void *client_handler(void *arg)
         client_socket);
 
 
+    notify_presence(client_socket, "LEAVE", username);
+
     close(
         client_socket);
 
@@ -1796,6 +1816,8 @@ void *client_handler(void *arg)
 
 int main()
 {
+    for (int i = 0; i < SEND_LOCK_COUNT; i++)
+        pthread_mutex_init(&send_locks[i], NULL);
     int server_socket;
 
     struct sockaddr_in server_addr;

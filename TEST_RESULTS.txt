@@ -1,0 +1,13 @@
+PASS: Five clients and network join notifications
+PASS: Duplicate and unsafe/malformed username rejection
+PASS: LIST, broadcast to four receivers, private message isolation
+PASS: JOIN/ROOMS/RMSG/LEAVE, room isolation and non-member rejection
+PASS: Binary and empty files, room files, storage integrity, command after file
+PASS: Rejected targets, room senders and filenames consume exact payload without extra errors
+PASS: Malformed commands, split/coalesced TCP lines, 950-character broadcast under sanitizers
+PASS: Concurrent binary transfers and 20 private messages preserve complete frames
+PASS: QUIT and abrupt disconnect cleanup with leave notifications
+PASS: Oversized frame rejected and connection cleaned up
+PASS: Real C client binary receive/send, local size validation, LIST and graceful QUIT
+PASS: Timestamped logging includes malformed commands and presence
+PASS: Real C client exits automatically when server disconnects
